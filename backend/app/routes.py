@@ -7,8 +7,8 @@ from app.schemas import (
     SearchResponse,
     UploadBatchResponse,
 )
-from app.services.pdf_ingestion import ingest_pdfs, search_chunks
-from app.services.rag_service import answer_question
+from app.services.indexing import ingest_pdfs
+from app.services.retrieval import answer_question, search_chunks
 
 router = APIRouter()
 
