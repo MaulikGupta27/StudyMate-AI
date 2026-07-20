@@ -1,25 +1,70 @@
 # StudyMate AI
 
-Upload your study material as PDFs, ask questions in natural language, and get accurate answers with page-level source references — powered by OpenAI and ChromaDB.
+A **Retrieval-Augmented Generation (RAG)** application that enables users to upload PDF study material, retrieve relevant document chunks using semantic search, and generate grounded answers with page-level source references using OpenAI and ChromaDB.
+
+---
 
 ## Features
 
-- Upload one or multiple PDFs at once
-- Ask questions and get AI-generated answers from your documents
-- View source references (filename and page number) for every answer
-- Conversation-style Q&A interface with full chat history
-- Persistent document storage across sessions
+* Retrieval-Augmented Generation (RAG) pipeline
+* Upload one or multiple PDF documents
+* Automatic PDF parsing, text extraction, and chunking
+* Semantic search using OpenAI Embeddings and ChromaDB
+* AI-generated answers grounded in the retrieved document context
+* Page-level source references (filename and page number) for every answer
+* Conversation-style Q&A interface with chat history
+* Persistent vector database for reuse across sessions
+
+---
+
+## RAG Pipeline
+
+### Indexing
+
+```text
+PDF Upload
+      ↓
+Text Extraction
+      ↓
+Chunking
+      ↓
+OpenAI Embeddings
+      ↓
+ChromaDB
+```
+
+### Retrieval
+
+```text
+User Question
+        ↓
+Query Embedding
+        ↓
+Semantic Search
+        ↓
+Retrieved Context
+        ↓
+OpenAI GPT
+        ↓
+Grounded Answer + Source References
+```
+
+---
 
 ## Tech Stack
 
-- **Frontend:** React, Vite, Tailwind CSS, Axios
-- **Backend:** FastAPI, LangChain, OpenAI
-- **Vector Database:** ChromaDB
-- **PDF Processing:** PyPDF
+* **Frontend:** React, Vite, Tailwind CSS, Axios
+* **Backend:** FastAPI, LangChain
+* **LLM:** OpenAI GPT
+* **Embeddings:** OpenAI Embeddings
+* **Vector Database:** ChromaDB
+* **PDF Processing:** PyPDF
+
+---
 
 ## Project Structure
 
-```
+```text
 StudyMate AI/
 ├── backend/
 │   ├── .env.example
@@ -30,9 +75,8 @@ StudyMate AI/
 │       ├── routes.py
 │       ├── schemas.py
 │       └── services/
-│           ├── pdf_ingestion.py
-│           ├── rag_service.py
-│           └── vector_store.py
+│           ├── indexing.py
+│           └── retrieval.py
 │
 └── frontend/
     ├── .env.example
@@ -49,6 +93,8 @@ StudyMate AI/
             └── AskQuestionSection.jsx
 ```
 
+---
+
 ## Installation & Setup
 
 ### Backend
@@ -58,6 +104,7 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate        # Windows
 # source .venv/bin/activate   # macOS/Linux
+
 pip install -r requirements.txt
 ```
 
@@ -68,16 +115,18 @@ cd frontend
 npm install
 ```
 
+---
+
 ## Environment Variables
 
-Copy the example files and fill in your values:
+Copy the example files and configure your environment variables.
 
 ```bash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
-**`backend/.env`**
+### `backend/.env`
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
@@ -87,43 +136,46 @@ CHROMA_COLLECTION_NAME=studymate_documents
 ALLOWED_ORIGINS=http://localhost:5173
 ```
 
-**`frontend/.env`**
+### `frontend/.env`
 
 ```env
 VITE_API_URL=http://localhost:8000
 ```
 
-## How to Run
+---
 
-Start the backend and frontend in separate terminals:
+## Running the Application
+
+Start the backend and frontend in separate terminals.
+
+### Backend
 
 ```bash
-# Terminal 1 — Backend
 cd backend
 .venv\Scripts\activate
 uvicorn app.main:app --reload
 ```
 
+### Frontend
+
 ```bash
-# Terminal 2 — Frontend
 cd frontend
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open your browser and visit:
+
+```
+http://localhost:5173
+```
+
+---
 
 ## Usage
 
-1. Upload one or more PDF files using the sidebar.
-2. Wait for processing to complete.
-3. Type a question in the input field and submit.
-4. View the AI-generated answer along with source references.
-
-## Future Improvements
-
-- Support for additional file formats (DOCX, TXT, Markdown)
-- Chat memory for follow-up questions
-- Drag-and-drop file upload with progress indicators
-- Option to delete or replace uploaded documents
-- Streaming responses for faster answer display
-- Authentication and per-user document storage
+1. Upload one or more PDF documents.
+2. Wait for the indexing process to finish.
+3. Enter a question related to the uploaded documents.
+4. The system retrieves the most relevant document chunks using semantic search.
+5. OpenAI generates an answer using only the retrieved context.
+6. View the generated answer along with its source filenames and page numbers.
