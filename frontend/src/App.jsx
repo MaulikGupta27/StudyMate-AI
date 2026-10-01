@@ -1,17 +1,155 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Header from './components/Header';
 import UploadPdfSection from './components/UploadPdfSection';
 import AskQuestionSection from './components/AskQuestionSection';
 import UploadedPdfList from './components/UploadedPdfList';
-import api from './api';
+import api, { getOrCreateUserId } from './api';
 
 function App() {
+  const [userId, setUserId] = useState(() => getOrCreateUserId());
   const [uploadedPdfs, setUploadedPdfs] = useState([]);
   const [question, setQuestion] = useState('');
-  const [conversation, setConversation] = useState([]);
+  const [conversation, setConversation] = useState(() => {
+    try {
+      const activeId = getOrCreateUserId();
+      const saved = localStorage.getItem(`studymate_chat_${activeId}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isUploading, setIsUploading] = useState(false);
   const [isAnswering, setIsAnswering] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Synchronize documents from ChromaDB for the active user
+  async function syncUserDocuments(targetUserId = userId) {
+    if (!targetUserId) return;
+    setIsSyncing(true);
+    try {
+      const { data } = await api.get('/api/documents', {
+        headers: { 'X-User-Id': targetUserId },
+      });
+      if (data.documents && data.documents.length > 0) {
+        const loaded = data.documents.map((doc, index) => ({
+          id: `${doc.filename}-${index}`,
+          name: doc.filename,
+          chunksCreated: doc.chunks_created,
+        }));
+        setUploadedPdfs(loaded);
+      } else {
+        setUploadedPdfs([]);
+      }
+    } catch (err) {
+      console.warn('Could not sync documents from database:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  // Persist conversation to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (conversation.length > 0) {
+        localStorage.setItem(`studymate_chat_${userId}`, JSON.stringify(conversation));
+      } else {
+        localStorage.removeItem(`studymate_chat_${userId}`);
+      }
+    } catch (err) {
+      console.warn('Could not persist conversation:', err);
+    }
+  }, [conversation, userId]);
+
+  // Synchronize documents on mount and listen for cross-tab updates or tab focus
+  useEffect(() => {
+    syncUserDocuments(userId);
+
+    function handleTabFocus() {
+      if (document.visibilityState === 'visible') {
+        const storedUserId = localStorage.getItem('studymate_user_id') || userId;
+        if (storedUserId !== userId) {
+          setUserId(storedUserId);
+        }
+        syncUserDocuments(storedUserId);
+
+        try {
+          const savedChat = localStorage.getItem(`studymate_chat_${storedUserId}`);
+          if (savedChat) {
+            setConversation(JSON.parse(savedChat));
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+    }
+
+    function handleStorage(e) {
+      if (e.key === 'studymate_user_id' && e.newValue) {
+        setUserId(e.newValue);
+        syncUserDocuments(e.newValue);
+        try {
+          const savedChat = localStorage.getItem(`studymate_chat_${e.newValue}`);
+          setConversation(savedChat ? JSON.parse(savedChat) : []);
+        } catch {
+          setConversation([]);
+        }
+      } else if (e.key === `studymate_chat_${userId}` && e.newValue) {
+        try {
+          setConversation(JSON.parse(e.newValue));
+        } catch {
+          // ignore parse errors
+        }
+      } else if (e.key === 'studymate_docs_version') {
+        syncUserDocuments(userId);
+      }
+    }
+
+    window.addEventListener('focus', handleTabFocus);
+    document.addEventListener('visibilitychange', handleTabFocus);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('focus', handleTabFocus);
+      document.removeEventListener('visibilitychange', handleTabFocus);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [userId]);
+
+  async function handleNewSession() {
+    try {
+      // Automatically clear ChromaDB chunks and Mem0 memories for the current session
+      await api.delete('/api/documents');
+    } catch (err) {
+      console.warn('Could not clear documents during new session:', err);
+    }
+
+    // Clean up cached chat for the old session
+    try {
+      localStorage.removeItem(`studymate_chat_${userId}`);
+    } catch {
+      // ignore
+    }
+
+    const freshId = 'user_' + Math.random().toString(36).substring(2, 10);
+    localStorage.setItem('studymate_user_id', freshId);
+    localStorage.setItem('studymate_docs_version', Date.now().toString());
+
+    setUserId(freshId);
+    setUploadedPdfs([]);
+    setConversation([]);
+    setErrorMessage('');
+  }
+
+  async function handleClearAll() {
+    try {
+      await api.delete('/api/documents');
+      localStorage.setItem('studymate_docs_version', Date.now().toString());
+      setUploadedPdfs([]);
+    } catch (err) {
+      setErrorMessage('Could not clear documents from the database.');
+    }
+  }
 
   async function handlePdfUpload(files) {
     if (!files || files.length === 0) {
@@ -45,8 +183,11 @@ function App() {
       }));
 
       setUploadedPdfs((currentFiles) => [...currentFiles, ...nextFiles]);
+      // Notify other open tabs that documents were added
+      localStorage.setItem('studymate_docs_version', Date.now().toString());
     } catch (error) {
-      setErrorMessage('Could not upload the PDFs. Check the backend server and try again.');
+      const detail = error.response?.data?.detail;
+      setErrorMessage(detail || 'Could not upload the PDFs. Check the backend server and try again.');
     } finally {
       setIsUploading(false);
     }
@@ -66,21 +207,32 @@ function App() {
       const userQuestion = question.trim();
       const { data } = await api.post('/api/ask', {
         question: userQuestion,
+        user_id: userId,
       });
-      setConversation((currentConversation) => [
-        ...currentConversation,
+
+      const updatedConversation = [
+        ...conversation,
         {
-          id: `${Date.now()}-${currentConversation.length}`,
+          id: `${Date.now()}-${conversation.length}`,
           question: userQuestion,
           answer: data.answer,
           source_filenames: data.source_filenames || [],
           source_page_numbers: data.source_page_numbers || [],
           sources: data.sources || [],
+          memories_used: data.memories_used || [],
         },
-      ]);
+      ];
+
+      setConversation(updatedConversation);
+      try {
+        localStorage.setItem(`studymate_chat_${userId}`, JSON.stringify(updatedConversation));
+      } catch {
+        // ignore
+      }
       setQuestion('');
     } catch (error) {
-      setErrorMessage('Could not get an answer. Make sure the backend is running and PDFs have been uploaded.');
+      const detail = error.response?.data?.detail;
+      setErrorMessage(detail || 'Could not get an answer. Make sure the backend is running and PDFs have been uploaded.');
     } finally {
       setIsAnswering(false);
     }
@@ -89,12 +241,17 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <Header />
+        <Header userId={userId} onNewSession={handleNewSession} />
 
         <main className="mt-6 grid gap-6 lg:grid-cols-[30%_70%]">
           <aside className="space-y-6">
             <UploadPdfSection onPdfUpload={handlePdfUpload} isUploading={isUploading} />
-            <UploadedPdfList uploadedPdfs={uploadedPdfs} />
+            <UploadedPdfList
+              uploadedPdfs={uploadedPdfs}
+              onClearAll={handleClearAll}
+              onRefresh={() => syncUserDocuments(userId)}
+              isSyncing={isSyncing}
+            />
           </aside>
 
           <section className="flex min-h-[calc(100vh-11rem)] flex-col rounded-3xl border border-white/10 bg-slate-900/50 p-4 shadow-lg shadow-slate-950/20 sm:p-6">
@@ -125,6 +282,19 @@ function App() {
 
                           <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-slate-800 bg-slate-900 px-4 py-3 text-sm leading-6 text-slate-200 sm:max-w-[80%]">
                             <p className="whitespace-pre-wrap">{turn.answer}</p>
+
+                            {turn.memories_used && turn.memories_used.length > 0 ? (
+                              <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-300">
+                                <p className="font-semibold uppercase tracking-[0.15em] text-emerald-400">
+                                  Mem0 Context Recalled
+                                </p>
+                                <ul className="mt-1 space-y-0.5 text-[11px] text-emerald-200/90 list-disc list-inside">
+                                  {turn.memories_used.map((memory, index) => (
+                                    <li key={index}>{memory}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
 
                             <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-300">
                               <p className="font-medium uppercase tracking-[0.2em] text-slate-400">Sources</p>

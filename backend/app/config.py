@@ -14,3 +14,7 @@ ALLOWED_ORIGINS = [
     for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
     if origin.strip()
 ]
+MEM0_API_KEY = os.getenv("MEM0_API_KEY", "")
+MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "25"))
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+MAX_PDF_COUNT = int(os.getenv("MAX_PDF_COUNT", "5"))

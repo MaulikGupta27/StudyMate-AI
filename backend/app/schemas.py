@@ -14,6 +14,7 @@ class UploadBatchResponse(BaseModel):
     total_pdfs: int
     total_chunks: int
     processed_pdfs: list[UploadedPdfItem]
+    user_id: str = "default_user"
 
 
 # --- Document search ---
@@ -22,6 +23,7 @@ class UploadBatchResponse(BaseModel):
 class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
+    user_id: str = "default_user"
 
 
 class SearchResultItem(BaseModel):
@@ -34,6 +36,7 @@ class SearchResultItem(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResultItem]
+    user_id: str = "default_user"
 
 
 # --- Question answering ---
@@ -41,6 +44,7 @@ class SearchResponse(BaseModel):
 
 class QuestionRequest(BaseModel):
     question: str
+    user_id: str = "default_user"
 
 
 class SourceReference(BaseModel):
@@ -53,3 +57,5 @@ class AnswerResponse(BaseModel):
     source_filenames: list[str]
     source_page_numbers: list[int]
     sources: list[SourceReference]
+    user_id: str = "default_user"
+    memories_used: list[str] = []
