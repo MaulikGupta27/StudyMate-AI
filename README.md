@@ -1,64 +1,45 @@
 # StudyMate AI
 
-A **Retrieval-Augmented Generation (RAG)** application that enables users to upload PDF study material, retrieve relevant document chunks using semantic search, and generate grounded answers with page-level source references using OpenAI and ChromaDB.
+A production-ready **Retrieval-Augmented Generation (RAG)** study assistant with **Mem0 long-term memory**, multi-tenant session isolation, and page-level source citations.
 
 ---
 
-## Features
+## Highlights
 
-* Retrieval-Augmented Generation (RAG) pipeline
-* Upload one or multiple PDF documents
-* Automatic PDF parsing, text extraction, and chunking
-* Semantic search using OpenAI Embeddings and ChromaDB
-* AI-generated answers grounded in the retrieved document context
-* Page-level source references (filename and page number) for every answer
-* Conversation-style Q&A interface with chat history
-* Persistent vector database for reuse across sessions
+- **Grounded Q&A:** Answers generated strictly using retrieved PDF context with exact page citations.
+- **Mem0 Long-Term Memory:** Retains high-relevance cross-conversation context and user preferences.
+- **Solution Caching:** Instant response reuse for identical queries with 0 LLM token cost.
+- **Multi-Tenant Isolation:** Documents and vector embeddings scoped per session/user ID.
+- **OOM Protection:** Streamed chunk disk writes enforcing strict file size (25MB) and count (5 PDFs) limits.
+- **Cross-Tab Synchronization:** Real-time state and database sync across multiple browser tabs.
 
 ---
 
-## RAG Pipeline
-
-### Indexing
+## Architecture Flow
 
 ```text
-PDF Upload
-      ↓
-Text Extraction
-      ↓
-Chunking
-      ↓
-OpenAI Embeddings
-      ↓
-ChromaDB
-```
-
-### Retrieval
-
-```text
-User Question
-        ↓
-Query Embedding
-        ↓
-Semantic Search
-        ↓
-Retrieved Context
-        ↓
-OpenAI GPT
-        ↓
-Grounded Answer + Source References
+PDF Upload ──► Stream to Disk ──► Chunk & Tag (User ID) ──► ChromaDB
+                                                                 │
+User Query ──► Cache Check (0 tokens) ───────────────────────────┤
+                  │ (miss)                                       ▼
+                  ▼                                     Semantic Search
+           Mem0 Search (Score > 0.50)                            │
+                  │                                              ▼
+                  └────────► OpenAI GPT-4o-mini ◄── Retrieved Context Chunks
+                                   │
+                                   ▼
+                      Answer + Page-Level Citations
 ```
 
 ---
 
 ## Tech Stack
 
-* **Frontend:** React, Vite, Tailwind CSS, Axios
-* **Backend:** FastAPI, LangChain
-* **LLM:** OpenAI GPT
-* **Embeddings:** OpenAI Embeddings
-* **Vector Database:** ChromaDB
-* **PDF Processing:** PyPDF
+- **Frontend:** React, Vite, Tailwind CSS, Axios
+- **Backend:** FastAPI, LangChain
+- **AI & Memory:** OpenAI (GPT-4o-mini & Embeddings), Mem0 Cloud API
+- **Vector Database:** ChromaDB
+- **PDF Processing:** PyPDF
 
 ---
 
@@ -67,66 +48,51 @@ Grounded Answer + Source References
 ```text
 StudyMate AI/
 ├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI app & CORS configuration
+│   │   ├── config.py            # Environment settings & size limits
+│   │   ├── routes.py            # Upload, document, search & QA endpoints
+│   │   ├── schemas.py           # Pydantic models & request schemas
+│   │   └── services/
+│   │       ├── indexing.py      # Streamed disk writes, chunking & ChromaDB
+│   │       ├── retrieval.py     # RAG pipeline & citation resolution
+│   │       └── memory.py        # Mem0 client & in-memory solution cache
 │   ├── .env.example
-│   ├── requirements.txt
-│   └── app/
-│       ├── main.py
-│       ├── config.py
-│       ├── routes.py
-│       ├── schemas.py
-│       └── services/
-│           ├── indexing.py
-│           └── retrieval.py
+│   └── requirements.txt
 │
 └── frontend/
+    ├── src/
+    │   ├── App.jsx              # Session, storage sync & chat orchestration
+    │   ├── api.js               # Axios client & X-User-Id header injection
+    │   └── components/
+    │       ├── Header.jsx       # Session badges & New Session action
+    │       ├── UploadPdfSection.jsx
+    │       ├── UploadedPdfList.jsx    # Live ChromaDB sync & chunk count
+    │       └── AskQuestionSection.jsx # Dynamic auto-resizing chat input
     ├── .env.example
-    ├── package.json
-    └── src/
-        ├── main.jsx
-        ├── App.jsx
-        ├── api.js
-        ├── index.css
-        └── components/
-            ├── Header.jsx
-            ├── UploadPdfSection.jsx
-            ├── UploadedPdfList.jsx
-            └── AskQuestionSection.jsx
+    └── package.json
 ```
 
 ---
 
-## Installation & Setup
+## Quickstart
 
-### Backend
+### 1. Backend Setup
 
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS/Linux
+
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+# source .venv/bin/activate
 
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
-### Frontend
-
-```bash
-cd frontend
-npm install
-```
-
----
-
-## Environment Variables
-
-Copy the example files and configure your environment variables.
-
-```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-```
-
-### `backend/.env`
+Configure `backend/.env`:
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
@@ -134,48 +100,36 @@ OPENAI_CHAT_MODEL=gpt-4o-mini
 CHROMA_PATH=./chroma_db
 CHROMA_COLLECTION_NAME=studymate_documents
 ALLOWED_ORIGINS=http://localhost:5173
+MEM0_API_KEY=your_mem0_api_key_here
+MAX_FILE_SIZE_MB=25
+MAX_PDF_COUNT=5
 ```
 
-### `frontend/.env`
-
-```env
-VITE_API_URL=http://localhost:8000
-```
-
----
-
-## Running the Application
-
-Start the backend and frontend in separate terminals.
-
-### Backend
+Start the backend:
 
 ```bash
-cd backend
-.venv\Scripts\activate
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+### 2. Frontend Setup
 
 ```bash
 cd frontend
+npm install
+cp .env.example .env
 npm run dev
 ```
 
-Open your browser and visit:
-
-```
-http://localhost:5173
-```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## Usage
+## Key Endpoints
 
-1. Upload one or more PDF documents.
-2. Wait for the indexing process to finish.
-3. Enter a question related to the uploaded documents.
-4. The system retrieves the most relevant document chunks using semantic search.
-5. OpenAI generates an answer using only the retrieved context.
-6. View the generated answer along with its source filenames and page numbers.
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/documents/upload` | Stream & index PDFs with per-user metadata |
+| `GET` | `/api/documents` | List active indexed documents & chunk counts |
+| `DELETE` | `/api/documents` | Clear user's ChromaDB chunks, cache & Mem0 memories |
+| `POST` | `/api/ask` | Run RAG pipeline with Mem0 context & caching |
+| `GET` | `/api/health` | Backend health check |
