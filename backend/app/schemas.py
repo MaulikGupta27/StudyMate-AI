@@ -59,3 +59,17 @@ class AnswerResponse(BaseModel):
     sources: list[SourceReference]
     user_id: str = "default_user"
     memories_used: list[str] = []
+
+
+# --- Access Gate Authentication ---
+
+
+class PasswordVerifyRequest(BaseModel):
+    password: str
+
+
+class AuthStatusResponse(BaseModel):
+    authenticated: bool
+    requires_password: bool
+    message: str
+

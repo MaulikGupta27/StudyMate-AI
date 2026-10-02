@@ -3,9 +3,18 @@ import Header from './components/Header';
 import UploadPdfSection from './components/UploadPdfSection';
 import AskQuestionSection from './components/AskQuestionSection';
 import UploadedPdfList from './components/UploadedPdfList';
-import api, { getOrCreateUserId } from './api';
+import LockScreen from './components/LockScreen';
+import api, {
+  clearStoredAccessPassword,
+  getOrCreateUserId,
+  getStoredAccessPassword,
+} from './api';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() =>
+    Boolean(getStoredAccessPassword())
+  );
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userId, setUserId] = useState(() => getOrCreateUserId());
   const [uploadedPdfs, setUploadedPdfs] = useState([]);
   const [question, setQuestion] = useState('');
@@ -23,9 +32,40 @@ function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Check server auth configuration on mount
+  useEffect(() => {
+    async function checkServerAuth() {
+      try {
+        const { data } = await api.get('/api/auth/status');
+        if (!data.requires_password) {
+          setIsAuthenticated(true);
+        } else if (data.authenticated) {
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch {
+        // Fall back to stored passcode presence if endpoint fails
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    }
+
+    checkServerAuth();
+
+    function handleUnauthorized() {
+      setIsAuthenticated(false);
+    }
+
+    window.addEventListener('studymate_unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('studymate_unauthorized', handleUnauthorized);
+    };
+  }, []);
+
   // Synchronize documents from ChromaDB for the active user
   async function syncUserDocuments(targetUserId = userId) {
-    if (!targetUserId) return;
+    if (!targetUserId || !isAuthenticated) return;
     setIsSyncing(true);
     try {
       const { data } = await api.get('/api/documents', {
@@ -63,6 +103,8 @@ function App() {
 
   // Synchronize documents on mount and listen for cross-tab updates or tab focus
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     syncUserDocuments(userId);
 
     function handleTabFocus() {
@@ -114,7 +156,12 @@ function App() {
       document.removeEventListener('visibilitychange', handleTabFocus);
       window.removeEventListener('storage', handleStorage);
     };
-  }, [userId]);
+  }, [userId, isAuthenticated]);
+
+  function handleLock() {
+    clearStoredAccessPassword();
+    setIsAuthenticated(false);
+  }
 
   async function handleNewSession() {
     try {
@@ -238,10 +285,28 @@ function App() {
     }
   }
 
+  if (isCheckingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
+        <div className="flex items-center gap-3">
+          <svg className="h-5 w-5 animate-spin text-sky-400" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <span className="text-sm font-medium">Checking access authentication...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LockScreen onAuthenticated={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <Header userId={userId} onNewSession={handleNewSession} />
+        <Header userId={userId} onNewSession={handleNewSession} onLock={handleLock} />
 
         <main className="mt-6 grid gap-6 lg:grid-cols-[30%_70%]">
           <aside className="space-y-6">
