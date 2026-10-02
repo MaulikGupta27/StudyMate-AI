@@ -1,17 +1,19 @@
 # StudyMate AI
 
-A production-ready **Retrieval-Augmented Generation (RAG)** study assistant with **Mem0 long-term memory**, multi-tenant session isolation, and page-level source citations.
+A production-ready **Retrieval-Augmented Generation (RAG)** study assistant with **Mem0 long-term memory**, multi-tenant session isolation, server-side access control, and page-level source citations.
 
 ---
 
 ## Highlights
 
 - **Grounded Q&A:** Answers generated strictly using retrieved PDF context with exact page citations.
+- **Access Gatekeeper:** Server-side `401 Unauthorized` passcode authentication protecting OpenAI & Mem0 API budgets against bot traffic.
 - **Mem0 Long-Term Memory:** Retains high-relevance cross-conversation context and user preferences.
 - **Solution Caching:** Instant response reuse for identical queries with 0 LLM token cost.
 - **Multi-Tenant Isolation:** Documents and vector embeddings scoped per session/user ID.
 - **OOM Protection:** Streamed chunk disk writes enforcing strict file size (25MB) and count (5 PDFs) limits.
 - **Cross-Tab Synchronization:** Real-time state and database sync across multiple browser tabs.
+- **Polished UI:** Drag-and-drop uploads, suggested prompt chips, citation pills, and deletion confirmation safeguards.
 
 ---
 
@@ -20,7 +22,10 @@ A production-ready **Retrieval-Augmented Generation (RAG)** study assistant with
 ```text
 PDF Upload ──► Stream to Disk ──► Chunk & Tag (User ID) ──► ChromaDB
                                                                  │
-User Query ──► Cache Check (0 tokens) ───────────────────────────┤
+User Query ──► Passcode Verification (HTTP 401 if invalid)       │
+                  │                                              │
+                  ▼                                              │
+           Cache Check (0 tokens) ───────────────────────────────┤
                   │ (miss)                                       ▼
                   ▼                                     Semantic Search
            Mem0 Search (Score > 0.50)                            │
@@ -63,11 +68,12 @@ StudyMate AI/
 └── frontend/
     ├── src/
     │   ├── App.jsx              # Session, storage sync & chat orchestration
-    │   ├── api.js               # Axios client & X-User-Id header injection
+    │   ├── api.js               # Axios client & header injection
     │   └── components/
-    │       ├── Header.jsx       # Session badges & New Session action
-    │       ├── UploadPdfSection.jsx
-    │       ├── UploadedPdfList.jsx    # Live ChromaDB sync & chunk count
+    │       ├── Header.jsx       # Session badges, lock & New Session actions
+    │       ├── LockScreen.jsx   # Passcode gatekeeper authentication
+    │       ├── UploadPdfSection.jsx   # Drag-and-drop file upload zone
+    │       ├── UploadedPdfList.jsx    # Live ChromaDB sync & wipe safeguards
     │       └── AskQuestionSection.jsx # Dynamic auto-resizing chat input
     ├── .env.example
     └── package.json
@@ -103,6 +109,7 @@ ALLOWED_ORIGINS=http://localhost:5173
 MEM0_API_KEY=your_mem0_api_key_here
 MAX_FILE_SIZE_MB=25
 MAX_PDF_COUNT=5
+APP_ACCESS_PASSWORD=your_secure_password_here
 ```
 
 Start the backend:
@@ -128,8 +135,10 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
+| `POST` | `/api/auth/verify` | Verify access passcode to unlock application |
+| `GET` | `/api/auth/status` | Check authentication status & server requirement |
 | `POST` | `/api/documents/upload` | Stream & index PDFs with per-user metadata |
 | `GET` | `/api/documents` | List active indexed documents & chunk counts |
 | `DELETE` | `/api/documents` | Clear user's ChromaDB chunks, cache & Mem0 memories |
 | `POST` | `/api/ask` | Run RAG pipeline with Mem0 context & caching |
-| `GET` | `/api/health` | Backend health check |
+| `GET` | `/api/health` | Public health check for platform monitors |
