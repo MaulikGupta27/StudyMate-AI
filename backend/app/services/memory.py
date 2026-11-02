@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from app.config import MEM0_API_KEY
+from app.services.security import validate_user_question
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +112,19 @@ def store_user_interaction(
     if not user_id or not question.strip():
         return
 
-    # Do not cache failed searches, refusals, or empty results
-    if "I could not find the information in the uploaded PDFs." in answer:
+    # Do not cache failed searches, refusals, security blocks, or empty results
+    unstoreable_answers = (
+        "I could not find the information in the uploaded PDFs.",
+        "Please ask a question.",
+        "Question exceeds maximum allowed length",
+        "I can only assist with academic questions based on your uploaded documents.",
+    )
+    if any(phrase in answer for phrase in unstoreable_answers):
+        return
+
+    # Validate that question is not an attack or invalid before caching/storing
+    is_valid, _ = validate_user_question(question)
+    if not is_valid:
         return
 
     # 1. Save to in-memory Q&A cache for instant reuse (0 token cost on repeat)
